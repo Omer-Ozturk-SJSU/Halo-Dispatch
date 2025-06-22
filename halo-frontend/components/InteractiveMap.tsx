@@ -6,6 +6,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Button } from '@/components/ui/button'
 import { ZoomIn, ZoomOut, Navigation, Clock, MapPin, Car, Shield, Heart } from 'lucide-react'
+import dynamic from 'next/dynamic'
 
 // Fix for default markers in Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -177,7 +178,8 @@ function MapControls({ onZoomIn, onZoomOut, onCenter }: {
   )
 }
 
-export default function InteractiveMap({
+// Rename the current export to InteractiveMapComponent
+const InteractiveMapComponent = function InteractiveMap({
   callerLocation,
   policeUnits,
   mapZoom,
@@ -751,4 +753,19 @@ export default function InteractiveMap({
       `}</style>
     </div>
   )
-} 
+}
+
+// Export the component with dynamic import to prevent SSR issues
+const DynamicInteractiveMap = dynamic(() => Promise.resolve(InteractiveMapComponent), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full w-full flex items-center justify-center bg-gray-100">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
+        <p>Loading map...</p>
+      </div>
+    </div>
+  )
+})
+
+export default DynamicInteractiveMap 
