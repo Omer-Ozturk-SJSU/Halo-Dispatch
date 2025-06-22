@@ -11,6 +11,14 @@ app = FastAPI()
 from api import vapi_webhook
 app.include_router(vapi_webhook.router)
 
+# Import the database models and engine
+from db.models import Base, engine
+
 @app.get("/")
 def root():
     return {"status": "API running"}
+
+if __name__ == "__main__":
+    print("Creating tables if they do not exist...")
+    Base.metadata.create_all(bind=engine)
+    print("Tables created.")
