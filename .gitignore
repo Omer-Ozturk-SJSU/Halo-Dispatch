@@ -40,6 +40,7 @@ halo_dispatch.db
 # Node.js
 node_modules/
 npm-debug.log*
+halo-backend/db/__pycache__/models.cpython-313.pyc
 yarn-debug.log*
 yarn-error.log*
 
@@ -108,4 +109,5 @@ halo-frontend/*.tsbuildinfo
 *.sw?
 halo-backend/__pycache__/main.cpython-313.pyc
 halo-backend/api/__pycache__/vapi_webhook.cpython-313.pyc
+halo-backend/db/__pycache__/models.cpython-313.pyc
 halo-backend/db/__pycache__/models.cpython-313.pyc
