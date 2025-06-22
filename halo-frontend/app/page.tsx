@@ -2,11 +2,12 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import InteractiveMap from "@/components/InteractiveMap"
 import {
   Phone,
   MapPin,
@@ -54,7 +55,10 @@ interface PoliceUnit {
   lat: number
   lng: number
   status: "En Route" | "Dispatched" | "Available"
-  eta: number
+  eta: number // in minutes
+  initialEta?: number // in minutes, to track progress
+  type: string
+  path?: any 
 }
 
 export default function LandingPage() {
@@ -616,18 +620,18 @@ function SignInPage({ onSignIn, onBackToLanding }: { onSignIn: () => void; onBac
 
 // Dashboard Component (Updated with Halo Dispatch branding)
 function Dashboard({ onSignOut }: { onSignOut: () => void }) {
-  const [currentTranscriptIndex, setCurrentTranscriptIndex] = useState(0)
+  const [currentTranscriptIndex, setCurrentTranscriptIndex] = useState(-1)
   const [callDuration, setCallDuration] = useState(0)
   const [darkMode, setDarkMode] = useState(false)
   const [mapZoom, setMapZoom] = useState(15)
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    transcript: true,
-    suggestions: true,
     map: true,
     analysis: false,
     medical: false,
     units: false,
   })
+  const [unitsPushed, setUnitsPushed] = useState(false)
+  const conversationEndRef = useRef<HTMLDivElement | null>(null)
 
   // Sarah Johnson's location (near UC Berkeley Student Union)
   const callerLocation = {
@@ -637,12 +641,24 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
     accuracy: 25, // meters
   }
 
+  // Realistic initial unit positions
+  const initialUnits: PoliceUnit[] = [
+    // Police Units near Berkeley PD
+    { id: "Unit 74", lat: 37.8695, lng: -122.2736, status: "Available", eta: 999, type: "Police" },
+    { id: "Unit 21", lat: 37.8685, lng: -122.2741, status: "Available", eta: 999, type: "Police" },
+    { id: "Unit 56", lat: 37.8732, lng: -122.2680, status: "Available", eta: 999, type: "Police" },
+
+    // EMS Units near Alta Bates Medical Center and other locations
+    { id: "Ambulance 12", lat: 37.8550, lng: -122.2520, status: "Available", eta: 999, type: "EMS" },
+    { id: "Ambulance 8", lat: 37.8755, lng: -122.2595, status: "Available", eta: 999, type: "EMS" },
+
+    // Fire Units near Berkeley Fire Station #2
+    { id: "Engine 7", lat: 37.8711, lng: -122.2694, status: "Available", eta: 999, type: "Fire" },
+    { id: "Ladder 3", lat: 37.8705, lng: -122.2699, status: "Available", eta: 999, type: "Fire" },
+  ]
+  
   // Police units with live positions around Berkeley
-  const [policeUnits, setPoliceUnits] = useState<PoliceUnit[]>([
-    { id: "Unit 23", lat: 37.872, lng: -122.259, status: "En Route", eta: 2 },
-    { id: "Unit 45", lat: 37.868, lng: -122.262, status: "Dispatched", eta: 3 },
-    { id: "Unit 12", lat: 37.871, lng: -122.258, status: "Available", eta: 5 },
-  ])
+  const [policeUnits, setPoliceUnits] = useState<PoliceUnit[]>(initialUnits)
 
   // Hardcoded scenario data
   const callerInfo = {
@@ -658,82 +674,184 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
     {
       time: "2:34:12 AM",
       speaker: "CALLER" as const,
-      text: "911, please help me...",
+      text: "911, please help me... he's coming...",
       keywords: ["help"],
     },
     {
       time: "2:34:15 AM",
       speaker: "DISPATCHER" as const,
-      text: "911, what's your emergency?",
+      text: "911, what's your emergency? I'm sending help now.",
     },
     {
-      time: "2:34:17 AM",
+      time: "2:34:19 AM",
       speaker: "CALLER" as const,
-      text: "He hit me again... I think I'm bleeding. I'm hiding in the bathroom closet.",
+      text: "He hit me again... I think my head is bleeding. I'm hiding in the bathroom closet, it's dark.",
       keywords: ["hit", "bleeding", "hiding"],
     },
     {
-      time: "2:34:23 AM",
+      time: "2:34:25 AM",
       speaker: "DISPATCHER" as const,
-      text: "I'm sending help right now. Are you safe where you are?",
+      text: "Okay, stay on the line with me. Help is on the way. Are you safe where you are?",
     },
     {
-      time: "2:34:26 AM",
+      time: "2:34:29 AM",
       speaker: "CALLER" as const,
-      text: "I don't know... he's still in the house somewhere. I can hear him yelling.",
+      text: "I don't know... he's still in the house somewhere. I can hear him yelling my name.",
       keywords: ["house", "yelling"],
+    },
+    {
+      time: "2:34:35 AM",
+      speaker: "DISPATCHER" as const,
+      text: "I understand you're scared. Just stay as quiet as possible. Can you see if the bathroom door is locked?",
+    },
+    {
+      time: "2:34:41 AM",
+      speaker: "CALLER" as const,
+      text: "I... I think so. I'm trying not to make any noise. Please hurry.",
+      keywords: ["hurry"],
     },
   ]
 
-  const getAgentSuggestions = () => {
-    const suggestions = []
-    if (currentTranscriptIndex >= 2) {
+  const getAgentSuggestions = (): AgentSuggestion[] => {
+    const suggestions: AgentSuggestion[] = []
+    // Suggestion appears after the second message from the caller
+    if (currentTranscriptIndex >= 2 && currentTranscriptIndex < 4) {
       suggestions.push({
         id: "medical",
-        type: "question" as const,
-        title: "Check head injury",
-        response: "Are you feeling dizzy or nauseous?",
+        type: "question",
+        title: "Check for Concussion",
+        response: "Since you mentioned a head injury, are you feeling dizzy or nauseous?",
       })
     }
-    if (currentTranscriptIndex >= 4) {
-      suggestions.push({
-        id: "safety",
-        type: "safety" as const,
-        title: "Keep caller quiet",
-        response: "Please whisper your answers to me.",
-      })
-    }
-    if (currentTranscriptIndex >= 3) {
-      suggestions.push({
-        id: "location",
-        type: "question" as const,
-        title: "Confirm apartment",
-        response: "Can you confirm you're near the UC Berkeley campus?",
-      })
-    }
-    if (currentTranscriptIndex >= 5) {
-      suggestions.push({
-        id: "dispatch",
-        type: "action" as const,
-        title: "Dispatch additional units",
-        response: "Consider sending mental health crisis team",
-      })
-    }
-    return suggestions.slice(0, 3)
+    return suggestions
   }
 
-  const responseUnits = [
+  const [responseUnits, setResponseUnits] = useState([
     { id: "Unit 23", type: "Police", eta: 2, status: "En Route" },
     { id: "Unit 45", type: "Police", eta: 3, status: "Dispatched" },
     { id: "Ambulance 12", type: "EMS", eta: 4, status: "Dispatched" },
-  ]
+    { id: "Engine 7", type: "Fire", eta: 5, status: "En Route" },
+  ])
+
+  // AI Response Unit Recommendations based on emergency type
+  const getAIRecommendations = () => {
+    const emergencyType = callerInfo.type.toLowerCase()
+    
+    if (emergencyType.includes('domestic violence')) {
+      return {
+        police: 2,
+        ems: 1,
+        fire: 1,
+        reasoning: [
+          'AI optimized for domestic violence response',
+          'Medical assessment required for potential injuries',
+          'Fire support for potential structural assessment'
+        ]
+      }
+    } else if (emergencyType.includes('medical')) {
+      return {
+        police: 1,
+        ems: 2,
+        fire: 0,
+        reasoning: [
+          'Primary medical emergency response',
+          'Backup EMS unit for critical care',
+          'Police for scene security if needed'
+        ]
+      }
+    } else if (emergencyType.includes('fire')) {
+      return {
+        police: 1,
+        ems: 1,
+        fire: 2,
+        reasoning: [
+          'Fire suppression and rescue priority',
+          'Medical support for potential injuries',
+          'Police for crowd control and traffic'
+        ]
+      }
+    } else {
+      return {
+        police: 1,
+        ems: 1,
+        fire: 0,
+        reasoning: [
+          'Standard emergency response protocol',
+          'Medical assessment as precaution',
+          'Police for scene management'
+        ]
+      }
+    }
+  }
+
+  const handlePushResponseUnits = async () => {
+    const recommendations = getAIRecommendations()
+    let availableUnits = [...policeUnits]
+    const unitsToDispatchPromises: Promise<PoliceUnit | null>[] = []
+
+    const dispatch = (type: string, count: number) => {
+      const selectedUnits = availableUnits
+        .filter(u => u.status === "Available" && u.type === type)
+        .sort((a, b) => {
+          const distA = Math.hypot(a.lat - callerLocation.lat, a.lng - callerLocation.lng)
+          const distB = Math.hypot(b.lat - callerLocation.lat, b.lng - callerLocation.lng)
+          return distA - distB
+        })
+        .slice(0, count)
+
+      selectedUnits.forEach(unit => {
+        availableUnits = availableUnits.filter(u => u.id !== unit.id) // Remove from pool immediately
+
+        const fetchRoutePromise = fetch(
+          `https://router.project-osrm.org/route/v1/driving/${unit.lng},${unit.lat};${callerLocation.lng},${callerLocation.lat}?overview=full&geometries=geojson`
+        )
+        .then(res => res.json())
+        .then(data => {
+          if (data.routes && data.routes.length > 0) {
+            const route = data.routes[0]
+            const etaMinutes = route.duration / 60 // OSRM gives duration in seconds
+            return {
+              ...unit,
+              status: "En Route" as const,
+              eta: etaMinutes,
+              initialEta: etaMinutes,
+              path: route.geometry,
+            }
+          }
+          return null
+        })
+        .catch(() => null)
+
+        unitsToDispatchPromises.push(fetchRoutePromise)
+      })
+    }
+
+    dispatch("Police", recommendations.police)
+    dispatch("EMS", recommendations.ems)
+    dispatch("Fire", recommendations.fire)
+
+    const dispatchedUnits = (await Promise.all(unitsToDispatchPromises)).filter(Boolean) as PoliceUnit[]
+
+    setPoliceUnits([...availableUnits, ...dispatchedUnits])
+    setUnitsPushed(true)
+  }
+
+  // Keep responseUnits in sync with policeUnits
+  useEffect(() => {
+    setResponseUnits(policeUnits.map(unit => ({
+      id: unit.id,
+      type: unit.type,
+      eta: unit.eta,
+      status: unit.status
+    })))
+  }, [policeUnits])
 
   // Simulate real-time transcript progression
   useEffect(() => {
     if (currentTranscriptIndex < fullTranscript.length - 1) {
       const timer = setTimeout(() => {
         setCurrentTranscriptIndex((prev) => prev + 1)
-      }, 4000)
+      }, 3500) // Slightly faster conversation pace
       return () => clearTimeout(timer)
     }
   }, [currentTranscriptIndex, fullTranscript.length])
@@ -743,24 +861,37 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
     const interval = setInterval(() => {
       setPoliceUnits((prev) =>
         prev.map((unit) => {
-          if (unit.status === "En Route") {
-            // Move units slightly towards caller location
-            const deltaLat = (callerLocation.lat - unit.lat) * 0.02
-            const deltaLng = (callerLocation.lng - unit.lng) * 0.02
+          if (unit.status === "En Route" && unit.path && unit.initialEta) {
+            const timeElapsed = (unit.initialEta - unit.eta)
+            const progress = Math.min(timeElapsed / unit.initialEta, 1)
+
+            const startCoords = unit.path.coordinates[0];
+            const endCoords = unit.path.coordinates[unit.path.coordinates.length - 1];
+
+            const newLng = startCoords[0] + (endCoords[0] - startCoords[0]) * progress;
+            const newLat = startCoords[1] + (endCoords[1] - startCoords[1]) * progress;
+            
+            const newEta = unit.eta - (1 / 60);
+
+            if (newEta <= 0) {
+              const [endLng, endLat] = endCoords;
+              return { ...unit, lat: endLat, lng: endLng, eta: 0, status: "Dispatched" };
+            }
+
             return {
               ...unit,
-              lat: unit.lat + deltaLat,
-              lng: unit.lng + deltaLng,
-              eta: Math.max(1, unit.eta - 0.1),
+              lat: newLat,
+              lng: newLng,
+              eta: Math.max(0, newEta),
             }
           }
           return unit
         }),
       )
-    }, 2000)
+    }, 1000) // Update every second
 
     return () => clearInterval(interval)
-  }, [callerLocation.lat, callerLocation.lng])
+  }, [])
 
   // Call duration timer
   useEffect(() => {
@@ -770,9 +901,22 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
     return () => clearInterval(timer)
   }, [])
 
+  // Auto-scroll conversation
+  useEffect(() => {
+    if (conversationEndRef.current) {
+      conversationEndRef.current.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [currentTranscriptIndex]) // Scroll on new message
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
+
+  const formatETA = (minutes: number) => {
+    const mins = Math.floor(minutes)
+    const secs = Math.floor((minutes % 1) * 60)
     return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
@@ -892,55 +1036,42 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
         </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Conversation & Suggestions */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* Live Transcript with Halo styling */}
-            <Card className={cardClasses}>
-              <CardHeader
-                className="cursor-pointer hover:bg-[#FFD700]/5 transition-colors"
-                onClick={() => toggleSection("transcript")}
-              >
+          {/* Left Column - Unified Conversation UI */}
+          <div className="lg:col-span-2">
+            <Card className={`${cardClasses} flex flex-col h-full`}>
+              <CardHeader className="border-b border-gray-200/10">
                 <CardTitle className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-3">
                     <Activity className="h-5 w-5 text-[#FFD700]" />
-                    <span>Live Conversation</span>
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="font-semibold">Live Emergency Conversation</span>
                   </div>
-                  {expandedSections.transcript ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
+                  <Badge className="bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black text-xs font-bold py-1 px-3">
+                    AI GUARDIAN ACTIVE
+                  </Badge>
                 </CardTitle>
               </CardHeader>
-              {expandedSections.transcript && (
-                <CardContent className="space-y-4 max-h-80 overflow-y-auto">
-                  {fullTranscript.slice(0, currentTranscriptIndex + 1).map((entry, index) => (
-                    <div key={index} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs opacity-70 font-medium">{entry.time}</span>
-                        <span
-                          className={`text-xs px-2 py-1 rounded-full ${
-                            entry.speaker === "CALLER"
-                              ? "bg-[#DC2626]/20 text-[#DC2626]"
-                              : "bg-[#FFD700]/20 text-[#FFD700]"
-                          }`}
-                        >
-                          {entry.speaker}
-                        </span>
-                      </div>
+              <CardContent className="flex-grow p-4 space-y-4 overflow-y-auto">
+                {/* Transcript, Suggestions, and Optimization are rendered here */}
+                {Array.from({ length: currentTranscriptIndex + 1 }).map((_, index) => {
+                  const entry = fullTranscript[index]
+                  return (
+                    <div key={`transcript-${index}`}>
                       <div
-                        className={`p-3 rounded-lg border ${
+                        className={`p-3 rounded-lg max-w-[85%] border ${
                           entry.speaker === "CALLER"
-                            ? darkMode
-                              ? "bg-red-900/30 border-red-800"
-                              : "bg-[#DC2626]/5 border-[#DC2626]/20"
-                            : darkMode
-                              ? "bg-yellow-900/30 border-yellow-800"
-                              : "bg-[#FFD700]/5 border-[#FFD700]/20"
+                            ? `mr-auto ${
+                                darkMode
+                                  ? "bg-red-500/20 border-red-500/40"
+                                  : "bg-red-500/10 border-red-500/30"
+                              }`
+                            : `ml-auto ${
+                                darkMode
+                                  ? "bg-amber-500/20 border-amber-500/40"
+                                  : "bg-amber-500/10 border-amber-500/30"
+                              }`
                         }`}
                       >
-                        <p className="text-sm">
+                        <p className={`text-sm ${darkMode ? "text-gray-200" : "text-gray-800"}`}>
                           {entry.keywords
                             ? entry.text.split(" ").map((word, i) => (
                                 <span
@@ -949,7 +1080,9 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
                                     entry.keywords?.some((keyword) =>
                                       word.toLowerCase().includes(keyword.toLowerCase()),
                                     )
-                                      ? "bg-[#FFD700] text-[#111827] px-1 rounded font-medium"
+                                      ? `${
+                                          darkMode ? "bg-amber-400 text-black" : "bg-amber-300 text-black"
+                                        } px-1 rounded font-medium`
                                       : ""
                                   }
                                 >
@@ -958,88 +1091,176 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
                               ))
                             : entry.text}
                         </p>
-                      </div>
-                    </div>
-                  ))}
-                  {currentTranscriptIndex < fullTranscript.length - 1 && (
-                    <div className="flex items-center space-x-2 opacity-70 py-2">
-                      <div className="animate-pulse w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-sm">AI Guardian is listening...</span>
-                    </div>
-                  )}
-                </CardContent>
-              )}
-            </Card>
-
-            {/* AI Suggestions with Halo styling */}
-            {getAgentSuggestions().length > 0 && (
-              <Card className={`border-l-4 border-l-[#FFD700] ${cardClasses}`}>
-                <CardHeader
-                  className="cursor-pointer hover:bg-[#FFD700]/5 transition-colors"
-                  onClick={() => toggleSection("suggestions")}
-                >
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Brain className="h-5 w-5 text-[#FFD700]" />
-                      <span>Guardian AI Suggestions</span>
-                      <Badge variant="outline" className="text-xs border-[#FFD700] text-[#FFD700]">
-                        {getAgentSuggestions().length}
-                      </Badge>
-                    </div>
-                    {expandedSections.suggestions ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" />
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                {expandedSections.suggestions && (
-                  <CardContent className="space-y-4">
-                    {getAgentSuggestions().map((suggestion, index) => (
-                      <div key={suggestion.id} className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs opacity-70 font-medium">Guardian Recommendation {index + 1}</span>
-                          <span
-                            className={`text-xs px-2 py-1 rounded-full ${
-                              suggestion.type === "question"
-                                ? "bg-[#FFD700]/20 text-[#FFD700]"
-                                : suggestion.type === "safety"
-                                  ? "bg-[#DC2626]/20 text-[#DC2626]"
-                                  : "bg-[#FB923C]/20 text-[#FB923C]"
-                            }`}
-                          >
-                            {suggestion.type.toUpperCase()}
-                          </span>
+                        <div className={`text-xs mt-2 text-right ${darkMode ? "text-gray-500" : "text-gray-400"}`}>
+                          {entry.time}
                         </div>
-                        <div
-                          className={`p-3 rounded-lg border ${
-                            darkMode ? "bg-yellow-900/30 border-yellow-800" : "bg-[#FFD700]/5 border-[#FFD700]/20"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2 mb-1">
-                                {suggestion.type === "question" && <MessageSquare className="h-3 w-3 text-[#FFD700]" />}
-                                {suggestion.type === "action" && <Lightbulb className="h-3 w-3 text-[#FB923C]" />}
-                                {suggestion.type === "safety" && <AlertTriangle className="h-3 w-3 text-[#DC2626]" />}
-                                <span className="text-sm font-medium">{suggestion.title}</span>
+                      </div>
+
+                      {/* AI Suggestions appear inline */}
+                      {index === 2 &&
+                        getAgentSuggestions().map((suggestion) => (
+                          <div key={suggestion.id} className="my-4">
+                            <div className="ml-auto max-w-[85%]">
+                              <div
+                                className={`p-3 rounded-lg bg-gradient-to-br border-2 shadow-lg ${
+                                  darkMode
+                                    ? "from-amber-500/30 to-amber-600/30 border-amber-500/50"
+                                    : "from-amber-400/30 to-amber-500/30 border-amber-500/40"
+                                }`}
+                              >
+                                <div className="flex items-start space-x-3">
+                                  <div className="flex-shrink-0 pt-1">
+                                    <Brain className="h-5 w-5 text-[#FFD700]" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-bold text-[#FFD700] mb-1">Guardian Suggestion</p>
+                                    <p className={`text-sm mb-3 ${darkMode ? "text-gray-200" : "text-gray-800"}`}>
+                                      "{suggestion.response}"
+                                    </p>
+                                    <Button
+                                      size="sm"
+                                      className="bg-[#FFD700] hover:bg-[#FFA500] text-black text-xs h-7 px-3 font-bold"
+                                    >
+                                      Use This Suggestion
+                                    </Button>
+                                  </div>
+                                </div>
                               </div>
-                              <p className="text-sm opacity-90">"{suggestion.response}"</p>
                             </div>
-                            <Button
-                              size="sm"
-                              className="ml-3 text-xs h-6 px-2 bg-[#FFD700] hover:bg-[#FFA500] text-[#111827]"
+                          </div>
+                        ))}
+
+                      {/* AI Response Optimization appears inline */}
+                      {index === 4 && (
+                        <div className="my-4">
+                          <div className="ml-auto max-w-[85%]">
+                            <div
+                              className={`p-4 rounded-lg bg-gradient-to-r border-2 shadow-xl ${
+                                darkMode
+                                  ? "from-amber-500/40 to-yellow-500/40 border-yellow-400/60"
+                                  : "from-amber-400/40 to-yellow-400/40 border-yellow-500/50"
+                              }`}
                             >
-                              Use
-                            </Button>
+                              <div className="space-y-3">
+                                <div className="flex items-center space-x-2">
+                                  <Shield className="h-5 w-5 text-[#FFD700]" />
+                                  <span className="text-sm font-bold text-[#FFD700]">
+                                    AI Response Unit Optimization
+                                  </span>
+                                </div>
+                                {(() => {
+                                  const recommendations = getAIRecommendations()
+                                  return (
+                                    <div className="grid grid-cols-3 gap-2 text-center">
+                                      <div
+                                        className={`p-2 rounded-lg ${
+                                          darkMode ? "bg-gray-800/50" : "bg-white/50"
+                                        }`}
+                                      >
+                                        <Shield className="h-5 w-5 text-blue-500 mx-auto" />
+                                        <div
+                                          className={`font-bold text-lg ${
+                                            darkMode ? "text-gray-200" : "text-gray-900"
+                                          }`}
+                                        >
+                                          {recommendations.police}
+                                        </div>
+                                        <div
+                                          className={`text-xs ${
+                                            darkMode ? "text-gray-400" : "text-gray-500"
+                                          }`}
+                                        >
+                                          Police
+                                        </div>
+                                      </div>
+                                      <div
+                                        className={`p-2 rounded-lg ${
+                                          darkMode ? "bg-gray-800/50" : "bg-white/50"
+                                        }`}
+                                      >
+                                        <Heart className="h-5 w-5 text-red-500 mx-auto" />
+                                        <div
+                                          className={`font-bold text-lg ${
+                                            darkMode ? "text-gray-200" : "text-gray-900"
+                                          }`}
+                                        >
+                                          {recommendations.ems}
+                                        </div>
+                                        <div
+                                          className={`text-xs ${
+                                            darkMode ? "text-gray-400" : "text-gray-500"
+                                          }`}
+                                        >
+                                          EMS
+                                        </div>
+                                      </div>
+                                      <div
+                                        className={`p-2 rounded-lg ${
+                                          darkMode ? "bg-gray-800/50" : "bg-white/50"
+                                        }`}
+                                      >
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          className="h-5 w-5 text-orange-500 mx-auto"
+                                          viewBox="0 0 20 20"
+                                          fill="currentColor"
+                                        >
+                                          <path
+                                            fillRule="evenodd"
+                                            d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"
+                                            clipRule="evenodd"
+                                          />
+                                        </svg>
+                                        <div
+                                          className={`font-bold text-lg ${
+                                            darkMode ? "text-gray-200" : "text-gray-900"
+                                          }`}
+                                        >
+                                          {recommendations.fire}
+                                        </div>
+                                        <div
+                                          className={`text-xs ${
+                                            darkMode ? "text-gray-400" : "text-gray-500"
+                                          }`}
+                                        >
+                                          Fire
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
+                                <div className="pt-2">
+                                  {unitsPushed ? (
+                                    <div
+                                      className={`flex items-center justify-center space-x-2 text-sm font-bold ${
+                                        darkMode ? "text-green-400" : "text-green-600"
+                                      }`}
+                                    >
+                                      <CheckCircle className="h-5 w-5" />
+                                      <span>Units Dispatched Successfully</span>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      className="w-full bg-gradient-to-r from-[#FFD700] to-[#FFA500] hover:from-[#FFA500] hover:to-[#FF8C00] text-black font-bold py-2 shadow-lg hover:shadow-xl transition-all duration-300"
+                                      onClick={handlePushResponseUnits}
+                                    >
+                                      <Shield className="h-4 w-4 mr-2" />
+                                      Dispatch Optimal Response
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                )}
-              </Card>
-            )}
+                      )}
+                    </div>
+                  )
+                })}
+                <div ref={conversationEndRef} />
+              </CardContent>
+            </Card>
           </div>
 
           {/* Right Sidebar with updated styling */}
@@ -1061,71 +1282,14 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
               </CardHeader>
               {expandedSections.map && (
                 <CardContent className="p-0">
-                  <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
-                    <div
-                      className="absolute inset-0 bg-cover bg-center"
-                      style={{
-                        backgroundImage: "url('/berkeley-map.png')",
-                        transform: `scale(${1 + (mapZoom - 15) * 0.1})`,
-                        transition: "transform 0.3s ease",
-                      }}
+                  <div className="relative w-full aspect-square">
+                    <InteractiveMap
+                      callerLocation={callerLocation}
+                      policeUnits={policeUnits}
+                      mapZoom={mapZoom}
+                      onZoomChange={setMapZoom}
+                      darkMode={darkMode}
                     />
-                    <div className="absolute inset-0 bg-black/10"></div>
-
-                    {/* Sarah's Location */}
-                    <div
-                      className="absolute transform -translate-x-1/2 -translate-y-1/2"
-                      style={{
-                        left: "60%",
-                        top: "45%",
-                        transform: `translate(-50%, -50%) scale(${Math.min(1.5, mapZoom / 12)})`,
-                      }}
-                    >
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-12 h-12 border-2 border-[#DC2626] rounded-full animate-ping opacity-30"></div>
-                        <div className="absolute w-8 h-8 border-2 border-[#DC2626] rounded-full animate-pulse opacity-50"></div>
-                        <div className="absolute w-4 h-4 bg-[#DC2626] rounded-full animate-pulse shadow-lg"></div>
-                      </div>
-                      <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
-                        <div className="bg-[#DC2626] text-white px-2 py-1 rounded text-xs font-medium shadow-lg whitespace-nowrap">
-                          Sarah Johnson
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Map Controls */}
-                    <div className="absolute top-2 right-2 flex flex-col space-y-1 z-10">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="bg-white/90 hover:bg-white text-gray-800 border-gray-300 h-6 w-6 p-0"
-                        onClick={() => setMapZoom(Math.min(20, mapZoom + 2))}
-                      >
-                        <ZoomIn className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="bg-white/90 hover:bg-white text-gray-800 border-gray-300 h-6 w-6 p-0"
-                        onClick={() => setMapZoom(Math.max(10, mapZoom - 2))}
-                      >
-                        <ZoomOut className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className={`p-2 border-t ${darkMode ? "border-gray-700 bg-gray-800" : "border-[#FFD700]/20"}`}>
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center space-x-3">
-                        <div className="flex items-center space-x-1">
-                          <div className="w-2 h-2 bg-[#DC2626] rounded-full"></div>
-                          <span>Caller</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <div className="w-2 h-2 bg-[#FFD700] rounded-full"></div>
-                          <span>Units</span>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 </CardContent>
               )}
@@ -1251,9 +1415,10 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
                       <div className="flex items-center space-x-2">
                         {unit.type === "Police" && <Shield className="h-4 w-4 text-blue-600" />}
                         {unit.type === "EMS" && <Heart className="h-4 w-4 text-red-600" />}
+                        {unit.type === "Fire" && <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" /></svg>}
                         <div>
                           <p className="text-sm font-medium">{unit.id}</p>
-                          <p className="text-xs opacity-70">ETA: {unit.eta} min</p>
+                          <p className="text-xs opacity-70">ETA: {formatETA(unit.eta)}</p>
                         </div>
                       </div>
                       <Badge
