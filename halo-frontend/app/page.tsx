@@ -711,6 +711,14 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
         response: "Can you confirm you're near the UC Berkeley campus?",
       })
     }
+    if (currentTranscriptIndex >= 5) {
+      suggestions.push({
+        id: "dispatch",
+        type: "action" as const,
+        title: "Dispatch additional units",
+        response: "Consider sending mental health crisis team",
+      })
+    }
     return suggestions.slice(0, 3)
   }
 
