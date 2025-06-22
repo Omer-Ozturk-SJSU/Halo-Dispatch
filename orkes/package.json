@@ -1,0 +1,16 @@
+{
+  "name": "orkes",
+  "version": "1.0.0",
+  "description": "Orkes Conductor workflow agents for Halo Dispatch",
+  "main": "trigger_agents.py",
+  "scripts": {
+    "start": "python trigger_agents.py",
+    "test": "python tests/test_backend_api.py",
+    "dev": "python trigger_agents.py",
+    "test:urgency": "python tests/test_backend_api.py --endpoint urgency",
+    "test:concerns": "python tests/test_backend_api.py --endpoint concerns"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  }
+} 

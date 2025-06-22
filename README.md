@@ -51,7 +51,7 @@ cd halo-backend
 pip install -r requirements.txt
 
 # Set OpenAI API key
-export OPENAI_API_KEY="your-api-key"
+export OPENAI_API_KEY="l4j4aac28607-4f06-11f0-a795-d685533af8e3"
 
 # Run the server
 uvicorn main:app --reload

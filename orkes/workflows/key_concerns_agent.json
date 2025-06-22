@@ -1,0 +1,25 @@
+{
+  "name": "key_concerns_agent",
+  "description": "Extracts safety concern tags from transcript.",
+  "version": 1,
+  "tasks": [
+    {
+      "name": "call_backend_for_concerns",
+      "taskReferenceName": "get_concerns",
+      "type": "HTTP",
+      "inputParameters": {
+        "http_request": {
+          "uri": "${workflow.variables.backend_url}/api/ai/key-concerns",
+          "method": "POST",
+          "body": {
+            "call_id": "${workflow.input.call_id}",
+            "transcript": "${workflow.input.transcript}"
+          },
+          "accept": "application/json"
+        }
+      }
+    }
+  ],
+  "inputParameters": ["call_id", "transcript", "backend_url"],
+  "schemaVersion": 2
+}

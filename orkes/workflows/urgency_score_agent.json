@@ -1,0 +1,25 @@
+{
+  "name": "urgency_score_agent",
+  "description": "Rates urgency 1-10 for a 911 transcript.",
+  "version": 1,
+  "tasks": [
+    {
+      "name": "call_backend_for_score",
+      "taskReferenceName": "get_score",
+      "type": "HTTP",
+      "inputParameters": {
+        "http_request": {
+          "uri": "${workflow.variables.backend_url}/api/ai/urgency-score",
+          "method": "POST",
+          "body": {
+            "call_id": "${workflow.input.call_id}",
+            "transcript": "${workflow.input.transcript}"
+          },
+          "accept": "application/json"
+        }
+      }
+    }
+  ],
+  "inputParameters": ["call_id", "transcript", "backend_url"],
+  "schemaVersion": 2
+}
