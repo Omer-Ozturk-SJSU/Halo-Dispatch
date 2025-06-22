@@ -4,13 +4,10 @@ from sqlalchemy.orm import sessionmaker, relationship
 import os
 import enum
 
-# MySQL connection string from .env
-MYSQL_USER = os.getenv('MYSQL_USER', 'root')
-MYSQL_PASSWORD = os.getenv('MYSQL_PASSWORD', '')
-MYSQL_HOST = os.getenv('MYSQL_HOST', 'localhost')
-MYSQL_DB = os.getenv('MYSQL_DB', 'halo_dispatch')
+# SQLite database configuration
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./halo_dispatch.db')
 
-SQLALCHEMY_DATABASE_URL = f"mysql+mysqlconnector://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}/{MYSQL_DB}"
+SQLALCHEMY_DATABASE_URL = DATABASE_URL
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -28,6 +25,7 @@ class Call(Base):
     __tablename__ = "calls"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id'))
+    external_call_id = Column(String(128), unique=True, index=True)  # VAPI call ID
     timestamp = Column(DateTime)
     current_score = Column(Integer)
     status = Column(String(32))  # active/completed

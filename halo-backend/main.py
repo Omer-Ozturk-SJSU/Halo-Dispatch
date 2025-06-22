@@ -11,8 +11,9 @@ load_dotenv()
 app = FastAPI()
 
 # Import and include the VAPI webhook router
-from api import vapi_webhook
+from api import vapi_webhook, test_vapi
 app.include_router(vapi_webhook.router)
+app.include_router(test_vapi.router)
 
 # Import the database models and engine
 from db.models import Base, engine, User, get_db
