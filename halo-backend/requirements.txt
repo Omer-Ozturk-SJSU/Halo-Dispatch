@@ -1,1 +1,3 @@
-# Add FastAPI, SQLAlchemy, OpenAI, etc.
+fastapi
+uvicorn
+python-dotenv
