@@ -17,6 +17,7 @@ halo-frontend/build/
 halo-frontend/node_modules/
 
 # Local environment variables
+.env
 .env*.local
 halo-frontend/.env.local
 halo-frontend/.env.development.local
@@ -35,4 +36,4 @@ halo-frontend/*.tsbuildinfo
 *.ntvs*
 *.njsproj
 *.sln
-*.sw? 
+*.sw?
