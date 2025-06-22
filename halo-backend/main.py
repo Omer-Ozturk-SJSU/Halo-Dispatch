@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 from sqlalchemy.orm import Session
@@ -8,12 +9,26 @@ from datetime import datetime, timedelta
 # Load environment variables from .env
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(title="Halo Dispatch API")
 
-# Import and include the VAPI webhook router
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Import and include all routers
 from api import vapi_webhook, test_vapi
+from api.urgency_score import router as urgency_router
+from api.key_concerns import router as concerns_router
+
 app.include_router(vapi_webhook.router)
 app.include_router(test_vapi.router)
+app.include_router(urgency_router)
+app.include_router(concerns_router)
 
 # Import the database models and engine
 from db.models import Base, engine, User, get_db
@@ -80,7 +95,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
 
 @app.get("/")
 def root():
-    return {"status": "API running"}
+    return {"status": "API running", "service": "Halo Dispatch API"}
 
 class TranscriptRead(BaseModel):
     id: int
@@ -213,3 +228,7 @@ if __name__ == "__main__":
     db.commit()
     print("Seed data inserted.")
     db.close()
+
+    # Start the server
+    port = int(os.environ.get("PORT", 8000))
+    # uvicorn.run(app, host="0.0.0.0", port=port)
