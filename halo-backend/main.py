@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from datetime import datetime, timedelta
 
 # Load environment variables from .env
@@ -51,7 +51,7 @@ class UserRead(BaseModel):
     allergies: str = None
     emergency_contact: str = None
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 @app.post("/users/", response_model=UserRead)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
@@ -104,7 +104,7 @@ class TranscriptRead(BaseModel):
     timestamp: datetime
     text: str
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 @app.get("/calls/{call_id}/transcripts", response_model=List[TranscriptRead])
 def get_transcripts(call_id: int, db: Session = Depends(get_db)):
@@ -117,7 +117,7 @@ class AIInsightRead(BaseModel):
     concern_tags: str
     urgency_score: int
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 @app.get("/calls/{call_id}/ai-insights", response_model=AIInsightRead)
 def get_ai_insight(call_id: int, db: Session = Depends(get_db)):
@@ -133,7 +133,7 @@ class UnitRead(BaseModel):
     eta: datetime = None
     location: str = None
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 @app.get("/calls/{call_id}/units", response_model=List[UnitRead])
 def get_units(call_id: int, db: Session = Depends(get_db)):
@@ -144,10 +144,11 @@ class CallRead(BaseModel):
     id: int
     user_id: int
     timestamp: datetime
-    current_score: int = None
+    current_score: Optional[int] = None
     status: str
+    external_call_id: Optional[str] = None  # Add the missing field
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 @app.get("/calls/", response_model=List[CallRead])
 def read_calls(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
@@ -160,6 +161,7 @@ def read_call(call_id: int, db: Session = Depends(get_db)):
     if call is None:
         raise HTTPException(status_code=404, detail="Call not found")
     return call
+
 
 if __name__ == "__main__":
     print("Creating tables if they do not exist...")
